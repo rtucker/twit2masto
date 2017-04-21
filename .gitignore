@@ -87,3 +87,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Stuff that ought not be committed like ever
+app_credentials.py
