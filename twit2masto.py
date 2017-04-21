@@ -72,7 +72,6 @@ def get_mastodon():
         password = getpass.getpass('Password: ')
         mastodon.log_in(username, password, to_file=USER_CREDS)
 
-
     return Mastodon(api_base_url=INSTANCE, client_id=CLIENT_CREDS, access_token=USER_CREDS)
 
 def get_twitter_whoami(t):
@@ -102,6 +101,16 @@ def get_twitter_high_water_mark():
 
     return hwm
 
+def rehost_image(m, url):
+    import requests
+    import tempfile
+    r = requests.get(url)
+    if r.status_code is 200:
+        mimetype = r.headers.get('Content-Type', 'application/octet-stream')
+        return m.media_post(r.content, mime_type=mimetype, is_raw_data=True)
+
+    return None
+
 if __name__ == '__main__':
     twitter = get_twitter()
     mastodon = get_mastodon()
@@ -119,9 +128,21 @@ if __name__ == '__main__':
         print t['id'], t['created_at']
         if hwm is None or t['id'] > hwm: hwm = t['id']
 
-        my_toot = t['text'] + '\n\n' + t_url + '\n\n' + "via #twit2masto"
+        my_toot = t['text'] + '\n\n'
 
-        mastodon.toot(my_toot)
+        pics = None
+
+        if 'entities' in t:
+            if 'media' in t['entities']:
+                for media in t['entities']['media']:
+                    if 'media_url_https' in media:
+                        media_id = rehost_image(mastodon, media['media_url_https'])
+                        if pics is None: pics = []
+                        pics.append(media_id)
+
+        my_toot += t['text'] + '\n\n' + "via #twit2masto\n" + t_url
+
+        mastodon.status_post(my_toot, media_ids=pics)
 
     # don't do anything more
     set_twitter_high_water_mark(hwm)
