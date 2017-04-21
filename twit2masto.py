@@ -128,8 +128,6 @@ if __name__ == '__main__':
         print t['id'], t['created_at']
         if hwm is None or t['id'] > hwm: hwm = t['id']
 
-        my_toot = t['text'] + '\n\n'
-
         pics = None
 
         if 'entities' in t:
@@ -140,7 +138,7 @@ if __name__ == '__main__':
                         if pics is None: pics = []
                         pics.append(media_id)
 
-        my_toot += t['text'] + '\n\n' + "via #twit2masto\n" + t_url
+        my_toot = t['text'] + '\n\n' + "via #twit2masto\n" + t_url
 
         mastodon.status_post(my_toot, media_ids=pics)
 
