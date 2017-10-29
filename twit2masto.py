@@ -79,9 +79,9 @@ def get_twitter_whoami(t):
 
 def get_twitter_statuses(t, screen_name, since=None, count=5):
     if since is not None:
-        return t.statuses.user_timeline(screen_name=u'BSidesROC', since_id=since, count=count)
+        return t.statuses.user_timeline(screen_name=u'fox_info_net', since_id=since, count=count)
 
-    return t.statuses.user_timeline(screen_name=u'BSidesROC', count=count)
+    return t.statuses.user_timeline(screen_name=u'fox_info_net', count=count)
 
 def set_twitter_high_water_mark(last):
     HWM_FILE = os.path.join(CONFIG_DIR, 'twitter_high_water_mark')
@@ -107,7 +107,7 @@ def rehost_image(m, url):
     r = requests.get(url)
     if r.status_code is 200:
         mimetype = r.headers.get('Content-Type', 'application/octet-stream')
-        return m.media_post(r.content, mime_type=mimetype, is_raw_data=True)
+        return m.media_post(r.content, mime_type=mimetype)
 
     return None
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
 
         my_toot = t['text'] + '\n\n' + "via #twit2masto\n" + t_url
 
-        mastodon.status_post(my_toot, media_ids=pics)
+        mastodon.status_post(my_toot, media_ids=pics, visibility='unlisted')
 
     # don't do anything more
     set_twitter_high_water_mark(hwm)
