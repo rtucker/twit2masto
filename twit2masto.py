@@ -2,6 +2,7 @@
 import os
 
 CONFIG_DIR=os.path.expanduser("~/.config/twit2masto")
+CONFIG_FILE=None
 
 def create_config_dir():
     # generate config dir if req'd
@@ -10,36 +11,62 @@ def create_config_dir():
             raise "%s already exists and is not a directory" % CONFIG_DIR
         os.makedirs(CONFIG_DIR, 0700)
 
-def get_twitter():
+def read_config_file(filename=None):
+    import ConfigParser
+    global CONFIG_FILE
+
+    config = ConfigParser.ConfigParser()
+
+    if filename is None:
+        filename = CONFIG_FILE
+
+    config.read(filename)
+    CONFIG_FILE = filename
+
+    return config
+
+def write_config_file(config):
+    global CONFIG_FILE
+
+    if CONFIG_FILE is None:
+        raise RuntimeError('CONFIG_FILE is None')
+
+    with open(CONFIG_FILE, 'w') as fp:
+        config.write(fp)
+
+def get_twitter(config):
     import app_credentials
     import twitter
 
-    # twitter oauth dance
-    create_config_dir()
+    if not config.has_section('twitter'):
+        config.add_section('twitter')
+        write_config_file(config)
 
-    MY_TWITTER_CREDS = os.path.join(CONFIG_DIR, 'twitter_user_credentials')
-    if not os.path.exists(MY_TWITTER_CREDS):
-        twitter.oauth_dance("twit2masto",
+    if not config.has_option('twitter', 'TWITTER_OAUTH_TOKEN') or not config.has_option('twitter', 'TWITTER_OAUTH_SECRET'):
+        oauth_token, oauth_token_secret = twitter.oauth_dance(
+            "twit2masto",
             app_credentials.TWITTER_CONSUMER_KEY,
-            app_credentials.TWITTER_CONSUMER_SECRET,
-            MY_TWITTER_CREDS)
+            app_credentials.TWITTER_CONSUMER_SECRET)
+        config.set('twitter', 'TWITTER_OAUTH_TOKEN', oauth_token)
+        config.set('twitter', 'TWITTER_OAUTH_SECRET', oauth_token)
+        write_config_file(config)
 
-    oauth_token, oauth_secret = twitter.read_token_file(MY_TWITTER_CREDS)
-
-    return twitter.Twitter(auth=twitter.OAuth(oauth_token, oauth_secret,
+    return twitter.Twitter(auth=twitter.OAuth(
+        config.get('twitter', 'TWITTER_OAUTH_TOKEN'),
+        config.get('twitter', 'TWITTER_OAUTH_SECRET'),
         app_credentials.TWITTER_CONSUMER_KEY,
         app_credentials.TWITTER_CONSUMER_SECRET))
 
-def get_mastodon():
+def get_mastodon(config):
     import getpass
     from mastodon import Mastodon
     import readline
 
-    create_config_dir()
+    if not config.has_section('mastodon'):
+        config.add_section('mastodon')
+        write_config_file(config)
 
-    # instance memory
-    INSTANCE_FILE = os.path.join(CONFIG_DIR, 'mastodon_instance')
-    while not os.path.exists(INSTANCE_FILE) or os.stat(INSTANCE_FILE).st_size == 0:
+    while not config.has_option('mastodon', 'MASTODON_INSTANCE'):
         inst_raw = ''
         while len(inst_raw) == 0:
             print("Please enter the hostname of your Mastodon instance.")
@@ -51,55 +78,54 @@ def get_mastodon():
         confirm = raw_input('Is this correct [Y/n]? ')
 
         if confirm in ['Y', 'y', '']:
-            with open(INSTANCE_FILE, 'w') as fd:
-                fd.write(instance + '\n')
-
-    INSTANCE = open(INSTANCE_FILE, 'r').readline().strip()
+            config.set('mastodon', 'MASTODON_INSTANCE', instance)
+            write_config_file(config)
 
     # create client/app credentials
-    CLIENT_CREDS = os.path.join(CONFIG_DIR, 'mastodon_client_credentials')
-    if not os.path.exists(CLIENT_CREDS):
-        Mastodon.create_app('twit2masto',
-            api_base_url=INSTANCE,
-            to_file=CLIENT_CREDS)
+    if not config.has_option('mastodon', 'MASTODON_CLIENT_ID') or not config.has_option('mastodon', 'MASTODON_CLIENT_SECRET'):
+        client_id, client_secret = Mastodon.create_app('twit2masto',
+            api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'))
+
+        config.set('mastodon', 'MASTODON_CLIENT_ID', client_id)
+        config.set('mastodon', 'MASTODON_CLIENT_SECRET', client_secret)
+        write_config_file(config)
 
     # Log in
-    USER_CREDS = os.path.join(CONFIG_DIR, 'mastodon_user_credentials')
-    if not os.path.exists(USER_CREDS):
-        mastodon = Mastodon(client_id=CLIENT_CREDS, api_base_url=INSTANCE)
-        print("Logging into %s..." % INSTANCE)
+    if not config.has_option('mastodon', 'MASTODON_USER_SECRET'):
+        mastodon = Mastodon(client_id=config.get('mastodon', 'MASTODON_CLIENT_ID'), client_secret=config.get('mastodon', 'MASTODON_CLIENT_SECRET'), api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'))
+        print("Logging into %s..." % config.get('mastodon', 'MASTODON_INSTANCE'))
         username = raw_input('E-mail address: ')
         password = getpass.getpass('Password: ')
-        mastodon.log_in(username, password, to_file=USER_CREDS)
+        access_token = mastodon.log_in(username, password)
+        config.set('mastodon', 'MASTODON_USER_SECRET', access_token)
+        write_config_file(config)
 
-    return Mastodon(api_base_url=INSTANCE, client_id=CLIENT_CREDS, access_token=USER_CREDS)
+    return Mastodon(client_id=config.get('mastodon', 'MASTODON_CLIENT_ID'), client_secret=config.get('mastodon', 'MASTODON_CLIENT_SECRET'), api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'), access_token=config.get('mastodon', 'MASTODON_USER_SECRET'))
 
 def get_twitter_whoami(t):
     return t.account.settings(_method="GET")['screen_name']
 
-def get_twitter_statuses(t, screen_name, since=None, count=5):
+def get_twitter_statuses(config, t, since=None, count=5):
+    if not config.has_section('twitter') or not config.has_option('twitter', 'TWITTER_SCREEN_NAME'):
+        raise RuntimeError('need more config: TWITTER_SCREEN_NAME')
+
     if since is not None:
-        return t.statuses.user_timeline(screen_name=u'fox_info_net', since_id=since, count=count)
+        return t.statuses.user_timeline(screen_name=config.get('twitter', 'TWITTER_SCREEN_NAME'), since_id=since, count=count)
 
-    return t.statuses.user_timeline(screen_name=u'fox_info_net', count=count)
+    return t.statuses.user_timeline(screen_name=config.get('twitter', 'TWITTER_SCREEN_NAME'), count=count)
 
-def set_twitter_high_water_mark(last):
-    HWM_FILE = os.path.join(CONFIG_DIR, 'twitter_high_water_mark')
-    with open(HWM_FILE, 'w') as fd:
-        fd.write(str(last))
+def set_twitter_high_water_mark(config, last):
+    if not config.has_section('twitter'):
+        config.add_section('twitter')
 
-def get_twitter_high_water_mark():
-    HWM_FILE = os.path.join(CONFIG_DIR, 'twitter_high_water_mark')
-    hwm = None
+    config.set('twitter', 'HIGH_WATER_MARK', last)
+    write_config_file(config)
 
-    if os.path.exists(HWM_FILE):
-        with open(HWM_FILE, 'r') as fd:
-            try:
-                hwm = int(fd.read())
-            except:
-                pass
+def get_twitter_high_water_mark(config):
+    if not config.has_section('twitter') or not config.has_option('twitter', 'HIGH_WATER_MARK'):
+        return 1
 
-    return hwm
+    return config.getint('twitter', 'HIGH_WATER_MARK')
 
 def rehost_image(m, url):
     import requests
@@ -112,14 +138,24 @@ def rehost_image(m, url):
     return None
 
 if __name__ == '__main__':
-    twitter = get_twitter()
-    mastodon = get_mastodon()
+    import sys
+
+    if len(sys.argv) == 1:
+        print('need config file param')
+        sys.exit(1)
+
+    config = read_config_file(sys.argv[1])
+
+    twitter = get_twitter(config)
+    config = read_config_file(sys.argv[1])
+    mastodon = get_mastodon(config)
 
     # get latest twitter stuff
-    me_twitter = get_twitter_whoami(twitter)
-    hwm = get_twitter_high_water_mark()
+    #me_twitter = get_twitter_whoami(twitter)
+    hwm = get_twitter_high_water_mark(config)
+    config = read_config_file(sys.argv[1])
 
-    twits = get_twitter_statuses(twitter, me_twitter, hwm)
+    twits = get_twitter_statuses(config, twitter, hwm)
     twits.reverse()
 
     # send it to the mastodon
@@ -143,5 +179,5 @@ if __name__ == '__main__':
         mastodon.status_post(my_toot, media_ids=pics, visibility='unlisted')
 
     # don't do anything more
-    set_twitter_high_water_mark(hwm)
+    set_twitter_high_water_mark(config, hwm)
 
