@@ -1,5 +1,12 @@
 #!/usr/bin/env python2
+import ConfigParser
+import getpass
 import os
+import sys
+import time
+import readline
+import requests
+import tempfile
 
 CONFIG_DIR=os.path.expanduser("~/.config/twit2masto")
 CONFIG_FILE=None
@@ -12,7 +19,6 @@ def create_config_dir():
         os.makedirs(CONFIG_DIR, 0700)
 
 def read_config_file(filename=None):
-    import ConfigParser
     global CONFIG_FILE
 
     config = ConfigParser.RawConfigParser()
@@ -41,8 +47,6 @@ def is_user(config):
     return config.has_option('twitter', 'twitter_screen_name')
 
 def is_visible(config):
-    import time
-
     VISIBLE_EVERY=19*60*60  # interval between visible posts
 
     if not config.has_section('history'):
@@ -86,9 +90,7 @@ def get_twitter(config):
         app_credentials.TWITTER_CONSUMER_SECRET))
 
 def get_mastodon(config):
-    import getpass
     from mastodon import Mastodon
-    import readline
 
     if not config.has_section('mastodon'):
         config.add_section('mastodon')
@@ -161,8 +163,6 @@ def get_twitter_high_water_mark(config):
     return config.getint('twitter', 'HIGH_WATER_MARK')
 
 def rehost_image(m, url):
-    import requests
-    import tempfile
     r = requests.get(url)
     if r.status_code is 200:
         mimetype = r.headers.get('Content-Type', 'application/octet-stream')
@@ -171,8 +171,6 @@ def rehost_image(m, url):
     return None
 
 if __name__ == '__main__':
-    import sys
-
     if len(sys.argv) == 1:
         print('need config file param')
         sys.exit(1)
