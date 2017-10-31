@@ -135,7 +135,7 @@ def get_mastodon(config):
 def get_twitter_whoami(t):
     return t.account.settings(_method="GET")['screen_name']
 
-def get_twitter_statuses(config, t, since=None, count=5):
+def get_twitter_statuses(config, t, since=None, count=1):
     if not config.has_section('twitter'):
         config.add_section('twitter')
         write_config_file(config)
