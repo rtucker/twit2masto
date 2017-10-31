@@ -15,7 +15,7 @@ def read_config_file(filename=None):
     import ConfigParser
     global CONFIG_FILE
 
-    config = ConfigParser.ConfigParser()
+    config = ConfigParser.RawConfigParser()
 
     if filename is None:
         filename = CONFIG_FILE
@@ -34,6 +34,34 @@ def write_config_file(config):
     with open(CONFIG_FILE, 'w') as fp:
         config.write(fp)
 
+def is_list(config):
+    return config.has_option('twitter', 'twitter_list_owner') and config.has_option('twitter', 'twitter_list_name')
+
+def is_user(config):
+    return config.has_option('twitter', 'twitter_screen_name')
+
+def is_visible(config):
+    import time
+
+    VISIBLE_EVERY=19*60*60  # interval between visible posts
+
+    if not config.has_section('history'):
+        config.add_section('history')
+        write_config_file(config)
+
+    if not config.has_option('history', 'last_visible_post'):
+        config.set('history', 'last_visible_post', 1)
+        write_config_file(config)
+
+    last_post = config.getint('history', 'last_visible_post')
+
+    if last_post + VISIBLE_EVERY < time.time():
+        config.set('history', 'last_visible_post', int(time.time()))
+        write_config_file(config)
+        return True
+
+    return False
+
 def get_twitter(config):
     import app_credentials
     import twitter
@@ -48,7 +76,7 @@ def get_twitter(config):
             app_credentials.TWITTER_CONSUMER_KEY,
             app_credentials.TWITTER_CONSUMER_SECRET)
         config.set('twitter', 'TWITTER_OAUTH_TOKEN', oauth_token)
-        config.set('twitter', 'TWITTER_OAUTH_SECRET', oauth_token)
+        config.set('twitter', 'TWITTER_OAUTH_SECRET', oauth_token_secret)
         write_config_file(config)
 
     return twitter.Twitter(auth=twitter.OAuth(
@@ -106,13 +134,18 @@ def get_twitter_whoami(t):
     return t.account.settings(_method="GET")['screen_name']
 
 def get_twitter_statuses(config, t, since=None, count=5):
-    if not config.has_section('twitter') or not config.has_option('twitter', 'TWITTER_SCREEN_NAME'):
-        raise RuntimeError('need more config: TWITTER_SCREEN_NAME')
+    if not config.has_section('twitter'):
+        config.add_section('twitter')
+        write_config_file(config)
 
-    if since is not None:
+    if is_user(config):
         return t.statuses.user_timeline(screen_name=config.get('twitter', 'TWITTER_SCREEN_NAME'), since_id=since, count=count)
 
-    return t.statuses.user_timeline(screen_name=config.get('twitter', 'TWITTER_SCREEN_NAME'), count=count)
+    elif is_list(config):
+        return t.lists.statuses(owner_screen_name=config.get('twitter', 'twitter_list_owner'), slug=config.get('twitter', 'twitter_list_name'), since_id=since, count=count)
+
+    else:
+        raise RuntimeError('need more config: TWITTER_SCREEN_NAME or TWITTER_LIST_(OWNER,NAME)')
 
 def set_twitter_high_water_mark(config, last):
     if not config.has_section('twitter'):
@@ -176,7 +209,10 @@ if __name__ == '__main__':
 
         my_toot = t['text'] + '\n\n' + "via #twit2masto\n" + t_url
 
-        mastodon.status_post(my_toot, media_ids=pics, visibility='unlisted')
+        if is_list(config):
+            my_toot = "@%s@twitter.com:\n\n%s" % (t['user']['screen_name'], my_toot)
+
+        mastodon.status_post(my_toot, media_ids=pics, visibility='public' if is_visible(config) else 'unlisted')
 
     # don't do anything more
     set_twitter_high_water_mark(config, hwm)
