@@ -192,7 +192,7 @@ if __name__ == '__main__':
     # send it to the mastodon
     for t in twits:
         t_url = "https://twitter.com/%s/status/%d" % (t['user']['screen_name'], t['id'])
-        print t['id'], t['created_at']
+        #print t['id'], t['created_at']
         if hwm is None or t['id'] > hwm: hwm = t['id']
 
         pics = None
