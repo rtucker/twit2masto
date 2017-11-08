@@ -10,6 +10,7 @@ import tempfile
 
 CONFIG_DIR=os.path.expanduser("~/.config/twit2masto")
 CONFIG_FILE=None
+MAX_COUNT=1
 
 def create_config_dir():
     # generate config dir if req'd
@@ -135,7 +136,7 @@ def get_mastodon(config):
 def get_twitter_whoami(t):
     return t.account.settings(_method="GET")['screen_name']
 
-def get_twitter_statuses(config, t, since=None, count=1):
+def get_twitter_statuses(config, t, since=None, count=20):
     if not config.has_section('twitter'):
         config.add_section('twitter')
         write_config_file(config)
@@ -190,9 +191,11 @@ if __name__ == '__main__':
     twits.reverse()
 
     # send it to the mastodon
+    countdown = MAX_COUNT
+
     for t in twits:
         t_url = "https://twitter.com/%s/status/%d" % (t['user']['screen_name'], t['id'])
-        #print t['id'], t['created_at']
+        #print(t['id'], t['created_at'], t['user']['screen_name'])
         if hwm is None or t['id'] > hwm: hwm = t['id']
 
         pics = None
@@ -210,7 +213,13 @@ if __name__ == '__main__':
         if is_list(config):
             my_toot = "@%s@twitter.com:\n\n%s" % (t['user']['screen_name'], my_toot)
 
+        # TODO: config setting to only post if there's pics?
+
         mastodon.status_post(my_toot, media_ids=pics, visibility='public' if is_visible(config) else 'unlisted')
+
+        countdown -= 1
+        if countdown <= 0:
+            break
 
     # don't do anything more
     set_twitter_high_water_mark(config, hwm)
