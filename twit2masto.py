@@ -229,14 +229,14 @@ if __name__ == '__main__':
                         pics.append(media_id)
                         if DEBUG: print(t['id'], t['created_at'], t['user']['screen_name'], "media added", media, media_id)
 
-        my_toot = t['text'] + '\n\n' + "via #twit2masto\n" + t_url
         if (pics is None or len(pics) == 0) and is_pics_only_feed(config):
             if DEBUG: print(t['id'], t['created_at'], t['user']['screen_name'], "skipping due to no pics")
             continue
 
-        if is_list(config):
-            my_toot = "@%s@twitter.com:\n\n%s" % (t['user']['screen_name'], my_toot)
+        my_toot = "%s\n\n---\n * Origin: Twitter (%s)" % (t['text'], t_url)
 
+        if is_list(config):
+            my_toot = "From: @%s@twitter.com\n\n%s" % (t['user']['screen_name'], my_toot)
 
         mastodon.status_post(my_toot, media_ids=pics, visibility='public' if is_visible(config) else 'unlisted')
 
