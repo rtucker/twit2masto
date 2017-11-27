@@ -44,9 +44,17 @@ def write_config_file(config):
         config.write(fp)
 
 def is_list(config):
+    if not config.has_section('twitter'):
+        config.add_section('twitter')
+        write_config_file(config)
+
     return config.has_option('twitter', 'twitter_list_owner') and config.has_option('twitter', 'twitter_list_name')
 
 def is_user(config):
+    if not config.has_section('twitter'):
+        config.add_section('twitter')
+        write_config_file(config)
+
     return config.has_option('twitter', 'twitter_screen_name')
 
 def is_visible(config):
