@@ -12,6 +12,8 @@ CONFIG_DIR=os.path.expanduser("~/.config/twit2masto")
 CONFIG_FILE=None
 MAX_COUNT=1
 
+DEBUG=False
+
 def create_config_dir():
     # generate config dir if req'd
     if not os.path.isdir(CONFIG_DIR):
@@ -195,7 +197,7 @@ if __name__ == '__main__':
 
     for t in twits:
         t_url = "https://twitter.com/%s/status/%d" % (t['user']['screen_name'], t['id'])
-        #print(t['id'], t['created_at'], t['user']['screen_name'])
+        if DEBUG: print(t['id'], t['created_at'], t['user']['screen_name'], "considering")
         if hwm is None or t['id'] > hwm: hwm = t['id']
 
         pics = None
@@ -204,9 +206,10 @@ if __name__ == '__main__':
             if 'media' in t['entities']:
                 for media in t['entities']['media']:
                     if 'media_url_https' in media:
-                        media_id = rehost_image(mastodon, media['media_url_https'])
                         if pics is None: pics = []
+                        media_id = rehost_image(mastodon, media['media_url_https'])
                         pics.append(media_id)
+                        if DEBUG: print(t['id'], t['created_at'], t['user']['screen_name'], "media added", media, media_id)
 
         my_toot = t['text'] + '\n\n' + "via #twit2masto\n" + t_url
 
