@@ -8,20 +8,13 @@ import readline
 import requests
 import tempfile
 
-CONFIG_DIR=os.path.expanduser("~/.config/twit2masto")
 CONFIG_FILE=None
 MAX_COUNT=1
-
 DEBUG=False
 
-def create_config_dir():
-    # generate config dir if req'd
-    if not os.path.isdir(CONFIG_DIR):
-        if os.path.exists(CONFIG_DIR):
-            raise "%s already exists and is not a directory" % CONFIG_DIR
-        os.makedirs(CONFIG_DIR, 0700)
-
 def read_config_file(filename=None):
+    """Read and parse the configuration file, returning it as a ConfigParser
+       object."""
     global CONFIG_FILE
 
     config = ConfigParser.RawConfigParser()
@@ -35,6 +28,7 @@ def read_config_file(filename=None):
     return config
 
 def write_config_file(config):
+    """Writes the configuration object to the previously-read config file."""
     global CONFIG_FILE
 
     if CONFIG_FILE is None:
@@ -44,13 +38,16 @@ def write_config_file(config):
         config.write(fp)
 
 def is_list(config):
+    """Are we configured to gate a Twitter list?"""
     if not config.has_section('twitter'):
         config.add_section('twitter')
         write_config_file(config)
 
-    return config.has_option('twitter', 'twitter_list_owner') and config.has_option('twitter', 'twitter_list_name')
+    return (config.has_option('twitter', 'twitter_list_owner')
+        and config.has_option('twitter', 'twitter_list_name'))
 
 def is_user(config):
+    """Are we configured to gate a Twitter user timeline?"""
     if not config.has_section('twitter'):
         config.add_section('twitter')
         write_config_file(config)
@@ -58,13 +55,17 @@ def is_user(config):
     return config.has_option('twitter', 'twitter_screen_name')
 
 def is_pics_only_feed(config):
+    """Are we configured to omit non-media posts (i.e. pics only)?"""
     if not config.has_section('general'):
         config.add_section('general')
         write_config_file(config)
 
-    return config.has_option('general', 'pics_only') and config.getboolean('general', 'pics_only')
+    return (config.has_option('general', 'pics_only')
+        and config.getboolean('general', 'pics_only'))
 
 def is_visible(config):
+    """Should this post be visible, based on the time since the last
+       visible post?"""
     if not config.has_section('history'):
         config.add_section('history')
         write_config_file(config)
@@ -88,6 +89,7 @@ def is_visible(config):
     return False
 
 def get_twitter(config):
+    """Returns a Twitter connection object."""
     import app_credentials
     import twitter
 
@@ -95,14 +97,15 @@ def get_twitter(config):
         config.add_section('twitter')
         write_config_file(config)
 
-    if not config.has_option('twitter', 'TWITTER_OAUTH_TOKEN') or not config.has_option('twitter', 'TWITTER_OAUTH_SECRET'):
-        oauth_token, oauth_token_secret = twitter.oauth_dance(
-            "twit2masto",
-            app_credentials.TWITTER_CONSUMER_KEY,
-            app_credentials.TWITTER_CONSUMER_SECRET)
-        config.set('twitter', 'TWITTER_OAUTH_TOKEN', oauth_token)
-        config.set('twitter', 'TWITTER_OAUTH_SECRET', oauth_token_secret)
-        write_config_file(config)
+    if (not config.has_option('twitter', 'TWITTER_OAUTH_TOKEN')
+        or not config.has_option('twitter', 'TWITTER_OAUTH_SECRET')):
+            oauth_token, oauth_token_secret = twitter.oauth_dance(
+                "twit2masto",
+                app_credentials.TWITTER_CONSUMER_KEY,
+                app_credentials.TWITTER_CONSUMER_SECRET)
+            config.set('twitter', 'TWITTER_OAUTH_TOKEN', oauth_token)
+            config.set('twitter', 'TWITTER_OAUTH_SECRET', oauth_token_secret)
+            write_config_file(config)
 
     return twitter.Twitter(auth=twitter.OAuth(
         config.get('twitter', 'TWITTER_OAUTH_TOKEN'),
@@ -111,6 +114,7 @@ def get_twitter(config):
         app_credentials.TWITTER_CONSUMER_SECRET))
 
 def get_mastodon(config):
+    """Returns a Mastodon connection object."""
     from mastodon import Mastodon
 
     if not config.has_section('mastodon'):
@@ -133,17 +137,21 @@ def get_mastodon(config):
             write_config_file(config)
 
     # create client/app credentials
-    if not config.has_option('mastodon', 'MASTODON_CLIENT_ID') or not config.has_option('mastodon', 'MASTODON_CLIENT_SECRET'):
-        client_id, client_secret = Mastodon.create_app('twit2masto',
-            api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'))
+    if (not config.has_option('mastodon', 'MASTODON_CLIENT_ID')
+        or not config.has_option('mastodon', 'MASTODON_CLIENT_SECRET')):
+            client_id, client_secret = Mastodon.create_app('twit2masto',
+                api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'))
 
-        config.set('mastodon', 'MASTODON_CLIENT_ID', client_id)
-        config.set('mastodon', 'MASTODON_CLIENT_SECRET', client_secret)
-        write_config_file(config)
+            config.set('mastodon', 'MASTODON_CLIENT_ID', client_id)
+            config.set('mastodon', 'MASTODON_CLIENT_SECRET', client_secret)
+            write_config_file(config)
 
     # Log in
     if not config.has_option('mastodon', 'MASTODON_USER_SECRET'):
-        mastodon = Mastodon(client_id=config.get('mastodon', 'MASTODON_CLIENT_ID'), client_secret=config.get('mastodon', 'MASTODON_CLIENT_SECRET'), api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'))
+        mastodon = Mastodon(
+                    client_id=config.get('mastodon', 'MASTODON_CLIENT_ID'),
+                    client_secret=config.get('mastodon', 'MASTODON_CLIENT_SECRET'),
+                    api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'))
         print("Logging into %s..." % config.get('mastodon', 'MASTODON_INSTANCE'))
         username = raw_input('E-mail address: ')
         password = getpass.getpass('Password: ')
@@ -151,7 +159,11 @@ def get_mastodon(config):
         config.set('mastodon', 'MASTODON_USER_SECRET', access_token)
         write_config_file(config)
 
-    return Mastodon(client_id=config.get('mastodon', 'MASTODON_CLIENT_ID'), client_secret=config.get('mastodon', 'MASTODON_CLIENT_SECRET'), api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'), access_token=config.get('mastodon', 'MASTODON_USER_SECRET'))
+    return Mastodon(
+            client_id=config.get('mastodon', 'MASTODON_CLIENT_ID'),
+            client_secret=config.get('mastodon', 'MASTODON_CLIENT_SECRET'),
+            api_base_url=config.get('mastodon', 'MASTODON_INSTANCE'),
+            access_token=config.get('mastodon', 'MASTODON_USER_SECRET'))
 
 def get_twitter_whoami(t):
     return t.account.settings(_method="GET")['screen_name']
@@ -162,15 +174,21 @@ def get_twitter_statuses(config, t, since=None, count=20):
         write_config_file(config)
 
     if is_user(config):
-        return t.statuses.user_timeline(screen_name=config.get('twitter', 'TWITTER_SCREEN_NAME'), since_id=since, count=count)
+        return t.statuses.user_timeline(
+                screen_name=config.get('twitter', 'TWITTER_SCREEN_NAME'),
+                since_id=since, count=count)
 
     elif is_list(config):
-        return t.lists.statuses(owner_screen_name=config.get('twitter', 'twitter_list_owner'), slug=config.get('twitter', 'twitter_list_name'), since_id=since, count=count)
+        return t.lists.statuses(
+                owner_screen_name=config.get('twitter', 'twitter_list_owner'),
+                slug=config.get('twitter', 'twitter_list_name'),
+                since_id=since, count=count)
 
     else:
         raise RuntimeError('need more config: TWITTER_SCREEN_NAME or TWITTER_LIST_(OWNER,NAME)')
 
 def set_twitter_high_water_mark(config, last):
+    """Set the marker for the latest Twitter status processed."""
     if not config.has_section('twitter'):
         config.add_section('twitter')
 
@@ -178,12 +196,16 @@ def set_twitter_high_water_mark(config, last):
     write_config_file(config)
 
 def get_twitter_high_water_mark(config):
-    if not config.has_section('twitter') or not config.has_option('twitter', 'HIGH_WATER_MARK'):
-        return 1
+    """Get the marker for the latest Twitter status processed."""
+    if (not config.has_section('twitter')
+        or not config.has_option('twitter', 'HIGH_WATER_MARK')):
+            return 1
 
     return config.getint('twitter', 'HIGH_WATER_MARK')
 
 def rehost_image(m, url):
+    """Pulls an image from a URL and rehosts it to Mastodon, returning the
+       media object."""
     r = requests.get(url)
     if r.status_code is 200:
         mimetype = r.headers.get('Content-Type', 'application/octet-stream')
