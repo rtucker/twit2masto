@@ -57,6 +57,12 @@ def is_user(config):
 
     return config.has_option('twitter', 'twitter_screen_name')
 
+def is_pics_only_feed(config):
+    if not config.has_section('general'):
+        config.add_section('general')
+        write_config_file(config)
+
+    return config.has_option('general', 'pics_only') and config.getboolean('general', 'pics_only')
 
 def is_visible(config):
     if not config.has_section('history'):
@@ -224,11 +230,13 @@ if __name__ == '__main__':
                         if DEBUG: print(t['id'], t['created_at'], t['user']['screen_name'], "media added", media, media_id)
 
         my_toot = t['text'] + '\n\n' + "via #twit2masto\n" + t_url
+        if (pics is None or len(pics) == 0) and is_pics_only_feed(config):
+            if DEBUG: print(t['id'], t['created_at'], t['user']['screen_name'], "skipping due to no pics")
+            continue
 
         if is_list(config):
             my_toot = "@%s@twitter.com:\n\n%s" % (t['user']['screen_name'], my_toot)
 
-        # TODO: config setting to only post if there's pics?
 
         mastodon.status_post(my_toot, media_ids=pics, visibility='public' if is_visible(config) else 'unlisted')
 
