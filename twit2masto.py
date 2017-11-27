@@ -57,9 +57,8 @@ def is_user(config):
 
     return config.has_option('twitter', 'twitter_screen_name')
 
-def is_visible(config):
-    VISIBLE_EVERY=19*60*60  # interval between visible posts
 
+def is_visible(config):
     if not config.has_section('history'):
         config.add_section('history')
         write_config_file(config)
@@ -68,9 +67,14 @@ def is_visible(config):
         config.set('history', 'last_visible_post', 1)
         write_config_file(config)
 
-    last_post = config.getint('history', 'last_visible_post')
+    if not config.has_option('history', 'visible_every'):
+        config.set('history', 'visible_every', 25*60*60)
+        write_config_file(config)
 
-    if last_post + VISIBLE_EVERY < time.time():
+    last_post = config.getint('history', 'last_visible_post')
+    visible_every = config.getint('history', 'visible_every')
+
+    if last_post + visible_every < time.time():
         config.set('history', 'last_visible_post', int(time.time()))
         write_config_file(config)
         return True
