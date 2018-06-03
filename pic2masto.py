@@ -1,5 +1,7 @@
 #!/usr/bin/env python2
 import ConfigParser
+import datetime
+import dateutil
 import getpass
 import os
 import sys
@@ -137,6 +139,31 @@ def rehost_image(m, url):
 
     return None
 
+def status_iter(m, min_age=0, include_favorites=True):
+    me = m.account_verify_credentials()
+    for s in m.account_statuses(me):
+        td = datetime.datetime.now(tz=dateutil.tz.tzutc()) - s.created_at
+        if td > datetime.timedelta(0, min_age):
+            if (include_favorites or s.favourites_count > 0):
+                yield s
+
+def cleanup_old(m, min_days=30, tags=[]):
+    tags = [t.lower() for t in tags]
+
+    for s in status_iter(m, min_age=min_days*24*60*60, include_favorites=False):
+        delete_this = False
+
+        if len(tags) > 0:
+            for t in s.tags:
+                if t.name in tags:
+                    delete_this = True
+        else:
+            delete_this = True
+
+        if delete_this:
+            print("Deleting status: %d" % s.id)
+            m.status_delete(s)
+
 if __name__ == '__main__':
     if len(sys.argv) == 1:
         print('need config file param')
@@ -148,6 +175,8 @@ if __name__ == '__main__':
 
     config = read_config_file(sys.argv[1])
 
+    cleanup_old(mastodon, tags=["Webcam"])
+
     source_url = get_source_url(config)
 
     media_id = rehost_image(mastodon, source_url)
@@ -157,4 +186,5 @@ if __name__ == '__main__':
     mastodon.status_post(my_toot,
                          media_ids=[media_id],
                          visibility='public' if is_visible(config) else 'unlisted')
+
 
