@@ -1,6 +1,7 @@
 certifi==2018.4.16
 chardet==3.0.4
 decorator==4.3.0
+ephem==3.7.6.0
 idna==2.6
 Mastodon.py==1.2.2
 pkg-resources==0.0.0

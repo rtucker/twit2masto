@@ -2,6 +2,7 @@
 import ConfigParser
 import datetime
 import dateutil
+import ephem
 import getpass
 import os
 import sys
@@ -181,6 +182,29 @@ def cleanup_old(m, min_days=30, tags=[]):
         #print("Deleting status: %d" % s.id)
         m.status_delete(s)
 
+def get_observer(config):
+    if (not config.has_section('general')
+        or not config.has_option('general', 'latitude')
+        or not config.has_option('general', 'longitude')):
+        return None
+
+    obs = ephem.Observer()
+    obs.lat = config.get('general', 'latitude')
+    obs.long = config.get('general', 'longitude')
+
+    return obs
+
+def is_sun_up(config):
+    obs = get_observer(config)
+    if obs is None:
+        return None
+
+    next_rise = obs.next_rising(ephem.Sun())
+    next_set = obs.next_setting(ephem.Sun())
+
+    # the sun is up if the next sunrise is later than the next sunset
+    return next_rise > next_set
+
 if __name__ == '__main__':
     if len(sys.argv) == 1:
         print('need config file param')
@@ -188,20 +212,20 @@ if __name__ == '__main__':
 
     config = read_config_file(sys.argv[1])
 
-    mastodon = get_mastodon(config)
+    if is_sun_up(config) in [None, True]:
+        mastodon = get_mastodon(config)
 
-    config = read_config_file(sys.argv[1])
+        config = read_config_file(sys.argv[1])
 
-    cleanup_old(mastodon, tags=["Webcam"])
+        cleanup_old(mastodon, tags=["Webcam"])
 
-    source_url = get_source_url(config)
+        source_url = get_source_url(config)
 
-    media_id = rehost_image(mastodon, source_url)
+        media_id = rehost_image(mastodon, source_url)
 
-    my_toot = get_text(config)
+        my_toot = get_text(config)
 
-    mastodon.status_post(my_toot,
-                         media_ids=[media_id],
-                         visibility='public' if is_visible(config) else 'unlisted')
-
+        mastodon.status_post(my_toot,
+                             media_ids=[media_id],
+                             visibility='public' if is_visible(config) else 'unlisted')
 
