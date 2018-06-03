@@ -139,30 +139,47 @@ def rehost_image(m, url):
 
     return None
 
-def status_iter(m, min_age=0, include_favorites=True):
+def status_iter(m, limit=20, min_days=0, tags=[], include_favorites=True):
     me = m.account_verify_credentials()
-    for s in m.account_statuses(me):
-        td = datetime.datetime.now(tz=dateutil.tz.tzutc()) - s.created_at
-        if td > datetime.timedelta(0, min_age):
-            if (include_favorites or s.favourites_count > 0):
-                yield s
-
-def cleanup_old(m, min_days=30, tags=[]):
+    max_id = None
+    min_td = datetime.timedelta(days=min_days)
     tags = [t.lower() for t in tags]
 
-    for s in status_iter(m, min_age=min_days*24*60*60, include_favorites=False):
-        delete_this = False
+    while limit > 0:
+        #print("Fetching block (max_id %d, remaining %d)" % (max_id or -1, limit))
+        statuses = m.account_statuses(me, max_id=max_id, limit=40)
 
-        if len(tags) > 0:
-            for t in s.tags:
-                if t.name in tags:
-                    delete_this = True
-        else:
-            delete_this = True
+        if len(statuses) == 0:
+            break
 
-        if delete_this:
-            print("Deleting status: %d" % s.id)
-            m.status_delete(s)
+        for s in statuses:
+            candidate = False
+
+            if max_id is None or max_id > s.id:
+                max_id = s.id
+
+            td = datetime.datetime.now(tz=dateutil.tz.tzutc()) - s.created_at
+            #print("Considering: %d (%s) td=%s vs %s" % (s.id, s.created_at, td, min_td))
+
+            candidate = td > min_td
+            candidate = candidate and (include_favorites or (s.favourites_count == 0 and s.reblogs_count == 0))
+
+            if candidate and len(tags) > 0:
+                tag_found = False
+                for t in s.tags:
+                    tag_found = tag_found or t.name.lower() in tags
+
+            if candidate:
+                yield s
+                limit -= 1
+
+            if limit <= 0:
+                break
+
+def cleanup_old(m, min_days=30, tags=[]):
+    for s in status_iter(m, min_days=min_days, tags=tags, include_favorites=False):
+        #print("Deleting status: %d" % s.id)
+        m.status_delete(s)
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:
