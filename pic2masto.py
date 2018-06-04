@@ -194,16 +194,75 @@ def get_observer(config):
 
     return obs
 
-def is_sun_up(config):
+def td_niceprint(tdelta):
+    if not isinstance(tdelta, datetime.timedelta):
+        tdelta = datetime.timedelta(seconds=tdelta)
+    days = tdelta.days
+    secs = tdelta.seconds
+    mins = secs / 60
+    secs -= (mins * 60)
+    hours = mins / 60
+    mins -= (hours * 60)
+
+    outval = ""
+
+    if days > 0:
+        outval += "%d day%s, " % (days, '' if days == 1 else 's')
+
+    outval += "%d:%02d:%02d" % (hours, mins, secs)
+
+    return outval
+
+def get_day_stats(config):
     obs = get_observer(config)
     if obs is None:
         return None
 
+    prev_rise = obs.previous_rising(ephem.Sun())
+    prev_set = obs.previous_setting(ephem.Sun())
     next_rise = obs.next_rising(ephem.Sun())
     next_set = obs.next_setting(ephem.Sun())
 
+    up = next_rise > next_set
+    rise_delta = obs.date - prev_rise if up else next_rise - obs.date
+    set_delta = next_set - obs.date if up else obs.date - prev_set
+
     # the sun is up if the next sunrise is later than the next sunset
-    return next_rise > next_set
+    if next_rise > next_set:
+        # sun is up
+        day_duration = next_set - prev_rise
+        day_passed = obs.date - prev_rise
+        day_remain = next_set - obs.date
+        day_completed = day_passed / day_duration
+    else:
+        day_duration = next_set - next_rise
+        day_passed = 1
+        day_remain = 0
+        day_completed = -1
+
+    return {
+        'sun': {
+            'up': up,
+            'rise': {
+                'prev': prev_rise,
+                'next': next_rise,
+                'delta': datetime.timedelta(rise_delta),
+                'str': ("%s ago" if up else "in %s") % td_niceprint(rise_delta*24*60*60),
+            },
+            'set': {
+                'prev': prev_set,
+                'next': next_set,
+                'delta': datetime.timedelta(set_delta),
+                'str': ("%s ago" if not up else "in %s") % td_niceprint(set_delta*24*60*60),
+            },
+        },
+        'day': {
+            'duration': day_duration,
+            'time_passed': day_passed,
+            'time_remaining': day_remain,
+            'percent': day_completed,
+        },
+    }
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:
@@ -212,20 +271,32 @@ if __name__ == '__main__':
 
     config = read_config_file(sys.argv[1])
 
-    if is_sun_up(config) in [None, True]:
-        mastodon = get_mastodon(config)
+    ds = get_day_stats(config)
 
-        config = read_config_file(sys.argv[1])
+    mastodon = get_mastodon(config)
 
-        cleanup_old(mastodon, tags=["Webcam"])
+    config = read_config_file(sys.argv[1])
 
-        source_url = get_source_url(config)
+    cleanup_old(mastodon, tags=["Webcam"])
 
-        media_id = rehost_image(mastodon, source_url)
+    source_url = get_source_url(config)
 
-        my_toot = get_text(config)
+    media_id = rehost_image(mastodon, source_url)
 
-        mastodon.status_post(my_toot,
-                             media_ids=[media_id],
-                             visibility='public' if is_visible(config) else 'unlisted')
+    my_toot = get_text(config)
+    my_toot += "\n"
+    my_toot += "\n"
+
+    if ds['sun']['up']:
+        my_toot += "Sunrise: %s\n" % (ds['sun']['rise']['str'])
+        my_toot += "Sunset: %s\n" % (ds['sun']['set']['str'])
+    else:
+        my_toot += "Sunset: %s\n" % (ds['sun']['set']['str'])
+        my_toot += "Sunrise: %s\n" % (ds['sun']['rise']['str'])
+
+    visible = ds['sun']['up'] and is_visible(config)
+
+    mastodon.status_post(my_toot,
+                         media_ids=[media_id],
+                         visibility='public' if visible else 'unlisted')
 
