@@ -255,7 +255,7 @@ if __name__ == '__main__':
             if DEBUG: print(t['id'], t['created_at'], t['user']['screen_name'], "skipping due to no pics")
             continue
 
-        my_toot = "%s\n\n---\n * Origin: Twitter (%s)" % (t['text'], t_url)
+        my_toot = "%s\n\n---\n * Origin: Twitter (%s)\n#bot" % (t['text'], t_url)
 
         if is_list(config):
             my_toot = "From: @%s@twitter.com\n\n%s" % (t['user']['screen_name'], my_toot)
